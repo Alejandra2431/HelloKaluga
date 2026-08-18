@@ -19,6 +19,8 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "led_strip.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 
 /* LED RGB direccionable de la Kaluga-1 (ver User Guide del kit). */
 
@@ -71,6 +73,36 @@ static led_strip_handle_t configurar_led(void)
     return led_strip;
 }
 
+static void establecer_brillo(
+    led_strip_handle_t led_strip,
+    const color_t *c,
+    uint8_t brillo)
+{
+    uint8_t nuevo_r = (c->r * brillo) / 100;
+    uint8_t nuevo_g = (c->g * brillo) / 100;
+    uint8_t nuevo_b = (c->b * brillo) / 100;
+
+    ESP_ERROR_CHECK(
+        led_strip_set_pixel(
+            led_strip,
+            0,
+            nuevo_r,
+            nuevo_g,
+            nuevo_b
+        )
+    );
+
+    ESP_ERROR_CHECK(led_strip_refresh(led_strip));
+    ESP_LOGI(TAG,
+         "LED: R=%d G=%d B=%d | Brillo: %d%% | Heap libre: %lu bytes | Uptime: %lu s",
+         c->r,
+         c->g,
+         c->b,
+         brillo,
+         esp_get_free_heap_size(),   // Opcional 3: Imprimir heap libre y uptime junto al estado del LED. 
+         (unsigned long)(esp_timer_get_time() / 1000000));
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Hola desde la ESP32-S2-Kaluga-1");
@@ -83,14 +115,18 @@ void app_main(void)
 
     while (1) {
         const color_t *c = &secuencia[iteracion % n];
-
-        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, 0, c->r, c->g, c->b));
-        ESP_ERROR_CHECK(led_strip_refresh(led_strip));
-
-        ESP_LOGI(TAG, "[%" PRIu32 "] LED -> %-8s (R=%3u G=%3u B=%3u)",
-                 iteracion, c->nombre, c->r, c->g, c->b);
-
+        int velocidad = 20 + (iteracion % 3) * 100; // Opcional 2: Cambia la velocidad de parpadeo cada iteración.
+ 
+        // Opcional 1: Aumenta el brillo para generar el efecto breathing. 
+    for (int brillo = 0; brillo <= 100; brillo += 5) {
+        establecer_brillo(led_strip, c, brillo);
+        vTaskDelay(pdMS_TO_TICKS(velocidad));
+    }
+        // Opcional 1: Disminuye el brillo para generar el efecto breathing.
+    for (int brillo = 100; brillo >= 0; brillo -= 5) {
+        establecer_brillo(led_strip, c, brillo);
+        vTaskDelay(pdMS_TO_TICKS(velocidad));
+    }
         iteracion++;
-        vTaskDelay(pdMS_TO_TICKS(STEP_DELAY_MS));
     }
 }
